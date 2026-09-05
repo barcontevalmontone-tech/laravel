@@ -1,0 +1,128 @@
+services:
+
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+            args:
+                UID: ${UID:-1000}
+                GID: ${GID:-1000}
+
+        container_name: laravel_app
+
+        volumes:
+            - ./:/var/www/html
+
+        environment:
+            PHP_IDE_CONFIG: serverName=laravel
+            XDEBUG_MODE: debug,develop
+
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
+
+        ports:
+            - "5173:5173"
+
+        depends_on:
+            mysql:
+                condition: service_healthy
+            redis:
+                condition: service_started
+
+        networks:
+            - laravel
+
+    nginx:
+        image: nginx:1.27-alpine
+
+        container_name: laravel_nginx
+
+        ports:
+            - "${APP_PORT:-8080}:80"
+
+        volumes:
+            - ./:/var/www/html:ro
+            - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+        depends_on:
+            - app
+
+        networks:
+            - laravel
+
+    mysql:
+        image: mysql:8.4
+
+        container_name: laravel_mysql
+
+        ports:
+            - "${DB_PORT:-3306}:3306"
+
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE:-laravel}
+            MYSQL_USER: ${DB_USERNAME:-laravel}
+            MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+            MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+
+        volumes:
+            - mysql_data:/var/lib/mysql
+
+        healthcheck:
+            test:
+              [
+                  "CMD",
+                  "mysqladmin",
+                  "ping",
+                  "-h",
+                  "localhost",
+                  "-u${DB_USERNAME:-laravel}",
+                  "-p${DB_PASSWORD:-secret}"
+              ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+
+        networks:
+            - laravel
+
+    redis:
+        image: redis:7-alpine
+
+        container_name: laravel_redis
+
+        ports:
+            - "${REDIS_PORT:-6379}:6379"
+
+        volumes:
+            - redis_data:/data
+
+        command: redis-server --appendonly yes
+
+        networks:
+            - laravel
+
+    node:
+        image: node:22-alpine
+
+        container_name: laravel_node
+
+        working_dir: /var/www/html
+
+        volumes:
+            - ./:/var/www/html
+
+        ports:
+            - "${VITE_PORT:-5173}:5173"
+
+        command: npm run dev -- --host 0.0.0.0
+
+        networks:
+            - laravel
+
+volumes:
+    mysql_data:
+    redis_data:
+
+networks:
+    laravel:
+        driver: bridge
