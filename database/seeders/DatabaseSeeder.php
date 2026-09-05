@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\Drink;
+use App\Models\DrinkItem;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -15,11 +17,15 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
 
         User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+            'name' => 'Admin',
+            'email' => 'admin@admin.com',
         ]);
+
+        User::factory(9)->create();
+        Drink::factory(20)
+            ->has(DrinkItem::factory(10), 'items')
+            ->create();
     }
 }
