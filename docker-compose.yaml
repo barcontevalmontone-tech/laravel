@@ -1,5 +1,4 @@
 services:
-
     app:
         build:
             context: .
@@ -20,9 +19,6 @@ services:
         extra_hosts:
             - "host.docker.internal:host-gateway"
 
-        ports:
-            - "5173:5173"
-
         depends_on:
             mysql:
                 condition: service_healthy
@@ -31,7 +27,6 @@ services:
 
         networks:
             - laravel
-
     nginx:
         image: nginx:1.27-alpine
 
@@ -49,7 +44,6 @@ services:
 
         networks:
             - laravel
-
     mysql:
         image: mysql:8.4
 
@@ -84,7 +78,6 @@ services:
 
         networks:
             - laravel
-
     redis:
         image: redis:7-alpine
 
@@ -100,7 +93,6 @@ services:
 
         networks:
             - laravel
-
     node:
         image: node:22-alpine
 
@@ -118,11 +110,9 @@ services:
 
         networks:
             - laravel
-
 volumes:
     mysql_data:
     redis_data:
-
 networks:
     laravel:
         driver: bridge
