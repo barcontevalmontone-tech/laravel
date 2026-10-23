@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Magazzino;
 
+use App\Enums\CausaleMagazzino;
 use App\Enums\TipoMovimento;
 use App\Exceptions\GiacenzaInsufficiente;
 use App\Http\Controllers\Controller;
@@ -77,8 +78,13 @@ class ArticoloController extends Controller
     {
         return view('magazzino.articoli.show', [
             'articolo' => $articolo->load(['categoria', 'fornitore']),
-            'movimenti' => $articolo->movimenti()->paginate(15),
+            'movimenti' => $articolo->movimenti()->with('utente')->paginate(15),
             'tipiMovimento' => TipoMovimento::cases(),
+            'causaliDisponibili' => CausaleMagazzino::cases(),
+            'causaliVisibili' => array_values(array_filter(
+                CausaleMagazzino::cases(),
+                fn (CausaleMagazzino $causale): bool => ! $causale->riservataAdmin() || auth()->user()?->isAdmin(),
+            )),
         ]);
     }
 

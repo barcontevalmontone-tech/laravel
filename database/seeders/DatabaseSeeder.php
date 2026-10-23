@@ -15,11 +15,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $this->call(AdminSeeder::class);
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // Demo del magazzino (disattivabile con SEED_DEMO=false).
+        if (filter_var(env('SEED_DEMO', true), FILTER_VALIDATE_BOOLEAN)) {
+            $this->call(DemoMagazzinoSeeder::class);
+        }
     }
 }

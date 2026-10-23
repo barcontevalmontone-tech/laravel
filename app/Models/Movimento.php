@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CausaleMagazzino;
 use App\Enums\TipoMovimento;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -25,6 +26,7 @@ class Movimento extends Model
      */
     protected $fillable = [
         'articolo_id',
+        'utente_id',
         'tipo',
         'quantita',
         'giacenza_prima',
@@ -40,6 +42,7 @@ class Movimento extends Model
      */
     protected $casts = [
         'tipo' => TipoMovimento::class,
+        'causale' => CausaleMagazzino::class,
         'quantita' => 'decimal:3',
         'giacenza_prima' => 'decimal:3',
         'giacenza_dopo' => 'decimal:3',
@@ -51,5 +54,13 @@ class Movimento extends Model
     public function articolo(): BelongsTo
     {
         return $this->belongsTo(Articolo::class);
+    }
+
+    /**
+     * The user who registered this movement (null for legacy data).
+     */
+    public function utente(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'utente_id');
     }
 }
