@@ -9,8 +9,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 describe('Web magazzino', function () {
-    it('redirects the home page to the dashboard', function () {
-        $this->get('/')->assertRedirect(route('magazzino.dashboard'));
+    it('shows the unified dashboard on the home page when authenticated', function () {
+        $this->get('/')->assertOk()->assertSee('Dashboard operativa');
+    });
+
+    it('redirects guests away from the home page', function () {
+        $this->app['auth']->forgetGuards();
+
+        $this->get('/')->assertRedirect(route('login'));
     });
 
     it('shows the dashboard with kpis and reorder alerts', function () {
@@ -93,7 +99,7 @@ describe('Web magazzino', function () {
         $this->post("/magazzino/articoli/{$articolo->id}/movimenti", [
             'tipo' => 'carico',
             'quantita' => 3,
-            'causale' => 'rettifica manuale',
+            'causale' => 'acquisto',
         ])->assertRedirect()->assertSessionHas('status');
 
         expect((float) $articolo->fresh()->giacenza)->toBe(8.0);
@@ -102,6 +108,7 @@ describe('Web magazzino', function () {
         $this->post("/magazzino/articoli/{$articolo->id}/movimenti", [
             'tipo' => 'scarico',
             'quantita' => 100,
+            'causale' => 'vendita',
         ])->assertSessionHas('error');
 
         expect((float) $articolo->fresh()->giacenza)->toBe(8.0);
@@ -109,18 +116,18 @@ describe('Web magazzino', function () {
 
     it('shows the article detail page with movement history', function () {
         $articolo = Articolo::factory()->create(['nome' => 'Cornetto al miele', 'barcode' => null]);
-        (new GestoreMagazzino)->carico($articolo, 12, 'carico DDT 2026-01');
+        (new GestoreMagazzino)->carico($articolo, 12, 'acquisto');
 
         $this->get("/magazzino/articoli/{$articolo->id}")
             ->assertOk()
             ->assertSee('Cornetto al miele')
             ->assertSee('Storico movimenti', false)
-            ->assertSee('carico DDT 2026-01');
+            ->assertSee('Acquisto da fornitore');
     });
 
     it('protects articles with movements from deletion in the web ui', function () {
         $articolo = Articolo::factory()->create();
-        (new GestoreMagazzino)->carico($articolo, 1);
+        (new GestoreMagazzino)->carico($articolo, 1, 'acquisto');
 
         $this->delete("/magazzino/articoli/{$articolo->id}")->assertSessionHas('error');
 

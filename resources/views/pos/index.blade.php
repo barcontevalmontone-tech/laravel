@@ -232,7 +232,7 @@
         <div x-show="confermato" x-cloak
              x-transition.opacity.duration.500ms
              class="fixed inset-x-0 bottom-8 mx-auto w-fit rounded-xl bg-emerald-600 px-8 py-4 text-xl font-bold text-white shadow-2xl">
-            ✅ Vendita confermata — nuovo scontrino pronto
+            ✅ Scontrino n. <span x-text="ultimoScontrino?.numero_scontrino"></span> confermato — tot. € <span x-text="ultimoScontrino?.totale"></span>
         </div>
 
         <script>
@@ -245,6 +245,7 @@
                     cercando: false,
                     inConfirmo: false,
                     confermato: false,
+                    ultimoScontrino: null,   // { numero_scontrino, totale } della vendita chiusa
                     matchEsatto: false,
                     erroreCarrello: '',
                     _timer: null,
@@ -365,7 +366,7 @@
                         this.erroreCarrello = '';
                     },
 
-                    // ── Conferma: validazione server-side via /api/pos/cart ─
+                    // ── Conferma: chiusura scontrino via /api/pos/confirm ─
                     async confermaVendita() {
                         if (this.carrello.length === 0) return;
 
@@ -380,7 +381,7 @@
                         };
 
                         try {
-                            const res = await fetch('/api/pos/cart', {
+                            const res = await fetch('/api/pos/confirm', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -394,7 +395,7 @@
 
                             if (res.status === 422) {
                                 const dettagli = (json.errori ?? [])
-                                    .map(e => `${e.nome ?? 'ID ' + e.prodotto_bar_id}: ${e.motivo}`)
+                                    .map(e => `${e.nome ?? e.ingrediente ?? 'ID ' + e.prodotto_bar_id}: ${e.motivo}`)
                                     .join(' — ');
                                 this.erroreCarrello = json.message + (dettagli ? '\n' + dettagli : '');
                                 return;
@@ -402,10 +403,11 @@
 
                             if (!res.ok) throw new Error('HTTP ' + res.status);
 
-                            // Tutto valido: chiudi lo scontrino e riparti da zero.
+                            // Vendita chiusa con scarico giacenze a server.
+                            this.ultimoScontrino = json.scontrino;
                             this.confermato = true;
                             this.svuota();
-                            setTimeout(() => { this.confermato = false; }, 2500);
+                            setTimeout(() => { this.confermato = false; }, 3500);
                             this.cerca(); // ricarica il catalogo con le giacenze correnti
                         } catch (e) {
                             this.erroreCarrello = 'Errore di rete durante la conferma della vendita.';

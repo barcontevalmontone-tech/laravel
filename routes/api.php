@@ -24,5 +24,6 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::prefix('pos')->group(function (): void {
         Route::get('/search', [PosController::class, 'search']);
         Route::post('/cart', [PosController::class, 'addToCart']);
+        Route::post('/confirm', [PosController::class, 'confirmSale']);
     });
 });

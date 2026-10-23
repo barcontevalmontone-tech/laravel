@@ -2,17 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ConfirmSaleRequest;
 use App\Http\Requests\PosSearchRequest;
 use App\Models\ProdottoBar;
+use App\Models\RigaScontrino;
+use App\Models\Scontrino;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Base logica del POS del Bar.
  *
- * Gestione della ricerca prodotti e dello scontrino temporaneo (carrello):
- * nessun aggiornamento di giacenza avviene qui — il carrello è volatile e
- * viene ricomposto a ogni richiesta con i dati correnti dal database.
+ * Gestione della ricerca prodotti, dello scontrino temporaneo (carrello)
+ * e della conferma definitiva della vendita con scarico delle giacenze.
  */
 class PosController extends Controller
 {
@@ -20,6 +23,13 @@ class PosController extends Controller
      * Numero massimo di risultati "simili" restituiti dalla ricerca.
      */
     private const MAX_RISULTATI_SIMILI = 10;
+
+    /**
+     * Unità di misura ammesse per gli ingredienti a ricetta.
+     * Le unità discrete (pz, pezzi...) indicano che l'ingrediente è un
+     * prodotto finito venduto tal quale in prodotti_bar.
+     */
+    private const UNITA_DISCRETE = ['pz', 'pezzo', 'pezzi'];
 
     /**
      * Ricerca prodotti attivi per codice_barre esatto o nome simile.
@@ -137,6 +147,200 @@ class PosController extends Controller
                 'totale_parziale' => number_format($totaleParziale, 2, '.', ''),
             ],
         ]);
+    }
+
+    /**
+     * Normalizza un nome per il confronto case-insensitive tra ingredienti
+     * di ricetta e prodotti bar. Usa la case-folding Unicode (non
+     * mb_strtoupper) perché SQLite UPPER() non piega le accentate maiuscole
+     * (À -> A), mentre quelle minuscole sì (à -> A).
+     */
+    private function normalizzaNome(string $nome): string
+    {
+        return mb_convert_case(trim($nome), MB_CASE_FOLD, 'UTF-8');
+    }
+
+    /**
+     * Conferma definitiva della vendita: scarica le giacenze e chiude lo scontrino.
+     *
+     * Regole:
+     * - prodotto SENZA ricetta → decrementa giacenza_attuale in prodotti_bar;
+     * - prodotto CON ricetta   → decrementa gli ingredienti: se l'ingrediente
+     *   corrisponde a un prodotto_bar (match per nome) lo scarica come riga di
+     *   magazzino, altrimenti ne tiene traccia solo nello scontrino (sfuso);
+     * - atomicità garantita da transazione DB con lock pessimistico (FOR UPDATE)
+     *   su tutte le righe coinvolte, lette in ordine di id per evitare deadlock.
+     *
+     * Payload atteso: { "articoli": [{ "prodotto_bar_id": 1, "quantita": 2 }, ...] }
+     */
+    public function confirmSale(ConfirmSaleRequest $request): JsonResponse
+    {
+        $articoli = $request->articoliNormalizzati();
+
+        // 1) Lock pessimistico dei prodotti venduti (ordinati per id).
+        $prodottiVenduti = ProdottoBar::query()
+            ->attivi()
+            ->whereIn('id', array_keys($articoli))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->with('ricette')
+            ->get();
+
+        $errori = [];
+        foreach ($articoli as $id => $quantita) {
+            $prodotto = $prodottiVenduti->firstWhere('id', $id);
+
+            if ($prodotto === null) {
+                $errori[] = [
+                    'prodotto_bar_id' => $id,
+                    'motivo' => 'Prodotto non trovato o non attivo.',
+                ];
+
+                continue;
+            }
+
+            // I prodotti a ricetta si preparano al momento: la disponibilità
+            // è data dagli ingredienti, non dal loro conteggio diretto.
+            if (! $prodotto->ha_ricetta && (float) $quantita > (float) $prodotto->giacenza_attuale) {
+                $errori[] = [
+                    'prodotto_bar_id' => $prodotto->id,
+                    'nome' => $prodotto->nome,
+                    'motivo' => 'Giacenza insufficiente.',
+                    'richiesta' => $quantita,
+                    'disponibile' => (float) $prodotto->giacenza_attuale,
+                ];
+            }
+        }
+
+        // 2) Identifica gli ingredienti mappati su prodotti_bar e li locka.
+        $nomiIngredienti = $prodottiVenduti
+            ->filter(fn (ProdottoBar $p) => $p->ha_ricetta && $p->ricette->isNotEmpty())
+            ->flatMap(fn (ProdottoBar $p) => $p->ricette->pluck('ingrediente_nome'))
+            ->unique()
+            ->values();
+
+        $ingredientiProdotto = $nomiIngredienti->isEmpty()
+            ? collect()
+            : ProdottoBar::attivi()
+                ->whereIn(DB::raw('LOWER(nome)'), $nomiIngredienti->map(fn ($n) => mb_convert_case($n, MB_CASE_FOLD, 'UTF-8'))->all())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy(fn (ProdottoBar $p) => $this->normalizzaNome($p->nome));
+
+        // Fabbisogno totale di ingrediente (somma su tutte le righe di scontrino).
+        $fabbisogno = [];
+        foreach ($prodottiVenduti as $prodotto) {
+            if (! $prodotto->ha_ricetta || $prodotto->ricette->isEmpty()) {
+                continue;
+            }
+
+            foreach ($prodotto->ricette as $riga) {
+                $chiave = $this->normalizzaNome($riga->ingrediente_nome);
+                $consumo = round((float) $riga->quantita_uso * $articoli[$prodotto->id], 3);
+                $fabbisogno[$chiave]['nome'] = $riga->ingrediente_nome;
+                $fabbisogno[$chiave]['unita'] = $riga->unita_misura;
+                $fabbisogno[$chiave]['totale'] = round(($fabbisogno[$chiave]['totale'] ?? 0) + $consumo, 3);
+            }
+        }
+
+        foreach ($fabbisogno as $chiave => $dato) {
+            $corrispondente = $ingredientiProdotto->get($chiave);
+
+            if ($corrispondente !== null && $dato['totale'] > (float) $corrispondente->giacenza_attuale) {
+                $errori[] = [
+                    'ingrediente' => $dato['nome'],
+                    'motivo' => 'Giacenza ingrediente insufficiente.',
+                    'richiesto' => $dato['totale'].' '.$dato['unita'],
+                    'disponibile' => (float) $corrispondente->giacenza_attuale.' '.$dato['unita'],
+                ];
+            }
+        }
+
+        if ($errori !== []) {
+            return response()->json([
+                'message' => 'Vendita non confermata: una o più righe superano la giacenza disponibile.',
+                'errori' => $errori,
+            ], 422);
+        }
+
+        // 3) Emissione dello scontrino e scarico giacenze in transazione atomica.
+        $scontrino = DB::transaction(function () use ($prodottiVenduti, $articoli, $ingredientiProdotto): Scontrino {
+            $numero = ((int) Scontrino::query()->max('numero_scontrino')) + 1;
+
+            $scontrino = Scontrino::create([
+                'numero_scontrino' => $numero,
+                'utente_id' => auth()->id(),
+                'totale' => 0,
+                'data_vendita' => now(),
+            ]);
+
+            $totale = 0.0;
+
+            foreach ($prodottiVenduti as $prodotto) {
+                $quantita = $articoli[$prodotto->id];
+                $subtotale = round((float) $prodotto->prezzo_vendita * $quantita, 2);
+                $totale = round($totale + $subtotale, 2);
+
+                $ingredientiConsumati = [];
+
+                if ($prodotto->ha_ricetta && $prodotto->ricette->isNotEmpty()) {
+                    // Scarico gli ingredienti che sono prodotti_bar conosciuti;
+                    // gli altri (sfusi) restano tracciati solo sullo scontrino.
+                    foreach ($prodotto->ricette as $riga) {
+                        $consumo = round((float) $riga->quantita_uso * $quantita, 3);
+
+                        $ingrediente = $ingredientiProdotto->get($this->normalizzaNome($riga->ingrediente_nome));
+
+                        if ($ingrediente !== null) {
+                            ProdottoBar::whereKey($ingrediente->id)
+                                ->decrement('giacenza_attuale', $consumo);
+                        }
+
+                        $ingredientiConsumati[] = [
+                            'ingrediente_nome' => $riga->ingrediente_nome,
+                            'quantita' => $consumo,
+                            'unita_misura' => $riga->unita_misura,
+                            'scaricato_da_magazzino' => $ingrediente !== null,
+                        ];
+                    }
+                } else {
+                    // Riga semplice: decremento diretto del prodotto venduto.
+                    ProdottoBar::whereKey($prodotto->id)
+                        ->decrement('giacenza_attuale', $quantita);
+                }
+
+                $scontrino->righe()->create([
+                    'prodotto_bar_id' => $prodotto->id,
+                    'nome_prodotto' => $prodotto->nome,
+                    'quantita' => $quantita,
+                    'prezzo_unitario' => $prodotto->prezzo_vendita,
+                    'subtotale' => $subtotale,
+                    'ingredienti_consumati' => $ingredientiConsumati !== [] ? $ingredientiConsumati : null,
+                ]);
+            }
+
+            $scontrino->update(['totale' => $totale]);
+
+            return $scontrino;
+        });
+
+        return response()->json([
+            'messaggio' => 'Vendita confermata.',
+            'scontrino' => [
+                'id' => $scontrino->id,
+                'numero_scontrino' => $scontrino->numero_scontrino,
+                'data_vendita' => $scontrino->data_vendita->toIso8601String(),
+                'totale' => number_format((float) $scontrino->totale, 2, '.', ''),
+                'righe' => $scontrino->load('righe')->righe->map(fn (RigaScontrino $r) => [
+                    'nome_prodotto' => $r->nome_prodotto,
+                    'quantita' => (float) $r->quantita,
+                    'prezzo_unitario' => (float) $r->prezzo_unitario,
+                    'subtotale' => (float) $r->subtotale,
+                    'ingredienti_consumati' => $r->ingredienti_consumati ?? [],
+                ])->values(),
+            ],
+        ], 201);
     }
 
     /**
