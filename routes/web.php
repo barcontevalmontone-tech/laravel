@@ -21,3 +21,8 @@ Route::prefix('magazzino')->name('magazzino.')->middleware('auth')->group(functi
         ->parameters(['articoli' => 'articolo'])
         ->except(['destroy']);
 });
+
+// Punto cassa POS Bar, accessibile solo ad operatori autenticati.
+Route::get('/pos', fn () => view('pos.index'))
+    ->middleware('auth')
+    ->name('pos.index');
