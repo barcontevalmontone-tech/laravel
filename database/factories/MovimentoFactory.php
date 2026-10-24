@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\CausaleMagazzino;
 use App\Enums\TipoMovimento;
 use App\Models\Articolo;
 use App\Models\Movimento;
@@ -35,7 +36,11 @@ class MovimentoFactory extends Factory
             'quantita' => $quantita,
             'giacenza_prima' => $giacenzaPrima,
             'giacenza_dopo' => $giacenzaPrima + $quantita,
-            'causale' => fake()->randomElement(['acquisto', 'vendita', 'inventario', null]),
+            'causale' => fake()->randomElement([
+                CausaleMagazzino::Acquisto->value,
+                CausaleMagazzino::Vendita->value,
+                CausaleMagazzino::RettificaInventario->value,
+            ]),
             'note' => null,
         ];
     }

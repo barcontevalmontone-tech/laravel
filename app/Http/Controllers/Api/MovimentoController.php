@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\TipoMovimento;
+use App\Exceptions\CausaleNonConsentita;
 use App\Exceptions\GiacenzaInsufficiente;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMovimentoRequest;
@@ -29,11 +30,11 @@ class MovimentoController extends Controller
                 causale: $request->input('causale'),
                 note: $request->input('note'),
             );
-        } catch (GiacenzaInsufficiente $e) {
+        } catch (GiacenzaInsufficiente | CausaleNonConsentita $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return (new MovimentoResource($movimento->load('articolo')))
+        return (new MovimentoResource($movimento->load(['articolo', 'utente'])))
             ->response()
             ->setStatusCode(201);
     }
@@ -43,7 +44,7 @@ class MovimentoController extends Controller
      */
     public function index(Articolo $articolo): AnonymousResourceCollection
     {
-        $movimenti = $articolo->movimenti()->with('articolo')->paginate(50);
+        $movimenti = $articolo->movimenti()->with(['articolo', 'utente'])->paginate(50);
 
         return MovimentoResource::collection($movimenti);
     }

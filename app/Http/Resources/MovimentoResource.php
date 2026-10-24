@@ -22,8 +22,13 @@ class MovimentoResource extends JsonResource
             'quantita' => $this->quantita,
             'giacenza_prima' => $this->giacenza_prima,
             'giacenza_dopo' => $this->giacenza_dopo,
-            'causale' => $this->causale,
+            'causale' => $this->causale?->value,
+            'causale_label' => $this->causale?->label(),
             'note' => $this->note,
+            'utente' => $this->whenLoaded('utente', fn () => [
+                'id' => $this->utente?->id,
+                'nome' => $this->utente?->name,
+            ]),
             'created_at' => $this->created_at,
         ];
     }

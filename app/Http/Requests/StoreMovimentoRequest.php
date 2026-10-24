@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\CausaleMagazzino;
 use App\Enums\TipoMovimento;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -26,8 +27,8 @@ class StoreMovimentoRequest extends FormRequest
         return [
             'tipo' => ['required', Rule::enum(TipoMovimento::class)],
             'quantita' => ['required', 'numeric', 'gt:0'],
-            'causale' => ['nullable', 'string', 'max:255'],
-            'note' => ['nullable', 'string'],
+            'causale' => ['required', 'string', Rule::enum(CausaleMagazzino::class)],
+            'note' => ['nullable', 'string', 'max:2000'],
         ];
     }
 
@@ -41,6 +42,8 @@ class StoreMovimentoRequest extends FormRequest
         return [
             'tipo.required' => 'Indica il tipo di movimento (carico, scarico o rettifica).',
             'quantita.gt' => 'La quantità deve essere maggiore di zero.',
+            'causale.required' => 'La causale è obbligatoria: scegli una causale di magazzino valida.',
+            'causale.enum' => 'La causale scelta non è prevista dal regolamento di magazzino.',
         ];
     }
 }

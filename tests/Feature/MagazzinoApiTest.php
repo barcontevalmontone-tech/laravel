@@ -93,8 +93,7 @@ describe('API articoli', function () {
 
     it('protects from deletion articles with movements', function () {
         $articolo = articoloDiTest();
-        GestoreMagazzino::class;
-        (new GestoreMagazzino)->carico($articolo, 5);
+        (new GestoreMagazzino)->carico($articolo, 5, 'acquisto');
 
         $this->deleteJson("/api/articoli/{$articolo->id}")
             ->assertStatus(409);
@@ -110,7 +109,7 @@ describe('API movimenti', function () {
         $response = $this->postJson("/api/articoli/{$articolo->id}/movimenti", [
             'tipo' => 'carico',
             'quantita' => 5,
-            'causale' => 'acquisto fornitore',
+            'causale' => 'acquisto',
         ]);
 
         $response->assertCreated()
@@ -127,6 +126,7 @@ describe('API movimenti', function () {
         $this->postJson("/api/articoli/{$articolo->id}/movimenti", [
             'tipo' => 'scarico',
             'quantita' => 10,
+            'causale' => 'vendita',
         ])
             ->assertStatus(422)
             ->assertJsonStructure(['message']);
@@ -146,13 +146,13 @@ describe('API movimenti', function () {
     it('lists article movements newest first', function () {
         $articolo = articoloDiTest(['giacenza' => 0]);
         $gestore = new GestoreMagazzino;
-        $gestore->carico($articolo, 10, 'primo');
-        $gestore->scarico($articolo, 3, 'secondo');
+        $gestore->carico($articolo, 10, 'acquisto');
+        $gestore->scarico($articolo, 3, 'vendita');
 
         $this->getJson("/api/articoli/{$articolo->codice}/movimenti")
             ->assertOk()
-            ->assertJsonPath('data.0.causale', 'secondo')
-            ->assertJsonPath('data.1.causale', 'primo');
+            ->assertJsonPath('data.0.causale', 'vendita')
+            ->assertJsonPath('data.1.causale', 'acquisto');
     });
 });
 

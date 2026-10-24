@@ -65,10 +65,18 @@
                 <input type="number" step="0.001" min="0.001" name="quantita" id="quantita" value="{{ old('quantita') }}" required
                        class="mt-1 w-32 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
             </div>
-            <div>
-                <label for="causale" class="block text-sm font-medium text-slate-700">Causale</label>
-                <input type="text" name="causale" id="causale" value="{{ old('causale') }}" placeholder="es. acquisto, vendita, inventario"
-                       class="mt-1 w-64 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+            <div x-data="{ tipo: '{{ old('tipo', 'carico') }}' }">
+                <label for="causale" class="block text-sm font-medium text-slate-700">Causale *</label>
+                <select name="causale" id="causale" required
+                        class="mt-1 block w-64 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                    <option value="">— seleziona causale —</option>
+                    @foreach ($causaliVisibili as $causale)
+                        <option value="{{ $causale->value }}" data-tipi="{{ implode(',', array_map(fn ($t) => $t->value, $causale->tipiConsentiti())) }}"
+                                @selected(old('causale') === $causale->value)>
+                            {{ $causale->label() }}{{ $causale->riservataAdmin() ? ' (admin)' : '' }}
+                        </option>
+                    @endforeach
+                </select>
             </div>
             <button type="submit" class="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">
                 Registra
@@ -76,6 +84,7 @@
         </form>
         <p class="mt-2 text-xs text-slate-400">
             Carico e scarico sommano/sottraggono quantità; la rettifica imposta il valore assoluto (per gli inventari).
+            Le causali sono regolate dal disciplinare di magazzino: quelle riservate agli amministratori non sono selezionabili dagli operatori.
         </p>
     </div>
 
@@ -92,6 +101,7 @@
                         <th class="px-4 py-2 text-right">Prima</th>
                         <th class="px-4 py-2 text-right">Dopo</th>
                         <th class="px-4 py-2">Causale</th>
+                        <th class="px-4 py-2">Operatore</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -111,11 +121,12 @@
                             <td class="px-4 py-2 text-right">{{ rtrim(rtrim($movimento->quantita, '0'), '.') }}</td>
                             <td class="px-4 py-2 text-right text-slate-500">{{ rtrim(rtrim($movimento->giacenza_prima, '0'), '.') }}</td>
                             <td class="px-4 py-2 text-right font-medium">{{ rtrim(rtrim($movimento->giacenza_dopo, '0'), '.') }}</td>
-                            <td class="px-4 py-2 text-slate-500">{{ $movimento->causale ?? '—' }}</td>
+                            <td class="px-4 py-2 text-slate-500">{{ $movimento->causale?->label() ?? '—' }}</td>
+                            <td class="px-4 py-2 text-slate-500">{{ $movimento->utente?->name ?? '—' }}</td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-4 py-8 text-center text-slate-400">Nessun movimento registrato.</td>
+                            <td colspan="7" class="px-4 py-8 text-center text-slate-400">Nessun movimento registrato.</td>
                         </tr>
                     @endforelse
                 </tbody>

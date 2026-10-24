@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\CausaleMagazzino;
 use App\Enums\TipoMovimento;
 use App\Exceptions\GiacenzaInsufficiente;
 use App\Models\Articolo;
@@ -46,7 +47,7 @@ describe('GestoreMagazzino', function () {
             ->quantita->toBe('5.000')
             ->giacenza_prima->toBe('10.000')
             ->giacenza_dopo->toBe('15.000')
-            ->causale->toBe('acquisto')
+            ->causale->toBe(CausaleMagazzino::Acquisto)
             ->articolo->id->toBe($articolo->id);
 
         expect((float) $articolo->fresh()->giacenza)->toBe(15.0);
@@ -68,7 +69,7 @@ describe('GestoreMagazzino', function () {
     it('sets an absolute value on a rettifica', function () {
         $articolo = Articolo::factory()->create(['giacenza' => 10]);
 
-        $movimento = $this->gestore->rettifica($articolo, 3, 'inventario');
+        $movimento = $this->gestore->rettifica($articolo, 3, 'rettifica-inventario');
 
         expect($movimento->fresh())
             ->tipo->toBe(TipoMovimento::Rettifica)
@@ -81,7 +82,7 @@ describe('GestoreMagazzino', function () {
     it('refuses a scarico that would bring the stock below zero', function () {
         $articolo = Articolo::factory()->create(['giacenza' => 2]);
 
-        expect(fn () => $this->gestore->scarico($articolo, 5))
+        expect(fn () => $this->gestore->scarico($articolo, 5, 'vendita'))
             ->toThrow(GiacenzaInsufficiente::class);
 
         expect((float) $articolo->fresh()->giacenza)->toBe(2.0);
@@ -91,7 +92,7 @@ describe('GestoreMagazzino', function () {
         $articolo = Articolo::factory()->create(['giacenza' => 2]);
 
         try {
-            $this->gestore->scarico($articolo, 5);
+            $this->gestore->scarico($articolo, 5, 'vendita');
         } catch (GiacenzaInsufficiente) {
             // expected
         }
@@ -102,7 +103,7 @@ describe('GestoreMagazzino', function () {
     it('allows a scarico that brings the stock exactly to zero', function () {
         $articolo = Articolo::factory()->create(['giacenza' => 7]);
 
-        $this->gestore->scarico($articolo, 7);
+        $this->gestore->scarico($articolo, 7, 'vendita');
 
         expect((float) $articolo->fresh()->giacenza)->toBe(0.0);
     });
@@ -110,17 +111,17 @@ describe('GestoreMagazzino', function () {
     it('rejects negative quantities', function () {
         $articolo = Articolo::factory()->create(['giacenza' => 10]);
 
-        expect(fn () => $this->gestore->registra($articolo, TipoMovimento::Carico, -3))
+        expect(fn () => $this->gestore->registra($articolo, TipoMovimento::Carico, -3, 'acquisto'))
             ->toThrow(InvalidArgumentException::class);
     });
 
     it('keeps stock consistent across sequential movements', function () {
         $articolo = Articolo::factory()->create(['giacenza' => 0]);
 
-        $this->gestore->carico($articolo, 10);
-        $this->gestore->scarico($articolo, 3);
-        $this->gestore->rettifica($articolo, 20);
-        $this->gestore->scarico($articolo, 8);
+        $this->gestore->carico($articolo, 10, 'acquisto');
+        $this->gestore->scarico($articolo, 3, 'vendita');
+        $this->gestore->rettifica($articolo, 20, 'rettifica-inventario');
+        $this->gestore->scarico($articolo, 8, 'vendita');
 
         expect((float) $articolo->fresh()->giacenza)->toBe(12.0);
         expect(Movimento::orderBy('id')->pluck('giacenza_dopo')->all())
@@ -130,8 +131,8 @@ describe('GestoreMagazzino', function () {
     it('exposes the article movements ordered from newest to oldest', function () {
         $articolo = Articolo::factory()->create(['giacenza' => 0]);
 
-        $primo = $this->gestore->carico($articolo, 10);
-        $secondo = $this->gestore->scarico($articolo, 2);
+        $primo = $this->gestore->carico($articolo, 10, 'acquisto');
+        $secondo = $this->gestore->scarico($articolo, 2, 'vendita');
 
         expect($articolo->fresh()->movimenti->pluck('id')->all())
             ->toBe([$secondo->id, $primo->id]);
