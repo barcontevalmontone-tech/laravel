@@ -11,6 +11,7 @@ enum TipoMovimento: string
     /**
      * The sign applied to the quantity for this movement type.
      */
+    // SE L'ENUM E' DI TIPO STRINGA NON DEVE MAI RITORNARE NUMERI
     public function segno(): int
     {
         return match ($this) {
@@ -23,6 +24,7 @@ enum TipoMovimento: string
     /**
      * A human readable label in Italian.
      */
+    // LE TRADUZIONI VANNO MESSE SEMPRE NEI FILE DI LANG
     public function label(): string
     {
         return match ($this) {
