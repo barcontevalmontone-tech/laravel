@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable(['cl', 'package_type', 'barcode'])]
-
 class DrinkItem extends Model
 {
     /** @use HasFactory<DrinkItemFactory> */
@@ -25,6 +24,9 @@ class DrinkItem extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<Drink, $this>
+     */
     public function drink(): BelongsTo
     {
         return $this->belongsTo(Drink::class);

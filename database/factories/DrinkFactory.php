@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enum\DrinkType;
 use App\Models\Drink;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -22,7 +23,7 @@ class DrinkFactory extends Factory
             'brand' => fake()->company,
             'description' => fake()->paragraph(),
             'alcoholic' => fake()->boolean(),
-            'type' => fake()->word,
+            'type' => fake()->randomElement(DrinkType::cases()),
             'sold_to_minor' => fake()->boolean(),
             'sugar_free' => fake()->boolean(),
             'gluten_free' => fake()->boolean(),
