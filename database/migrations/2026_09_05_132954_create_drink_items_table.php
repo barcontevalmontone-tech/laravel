@@ -18,6 +18,7 @@ return new class extends Migration
             $table->unsignedInteger('cl');
             $table->string('package_type');
             $table->string('barcode');
+            $table->unsignedBigInteger('price');
             $table->timestamps();
         });
     }

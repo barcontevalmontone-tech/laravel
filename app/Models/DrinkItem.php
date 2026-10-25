@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['cl', 'package_type', 'barcode'])]
+#[Fillable(['cl', 'package_type', 'barcode', 'price'])]
 class DrinkItem extends Model
 {
     /** @use HasFactory<DrinkItemFactory> */

@@ -22,6 +22,7 @@ class DrinkItemFactory extends Factory
             'cl' => fake()->numberBetween(5, 100),
             'package_type' => fake()->randomElement(DrinkPackageType::cases()),
             'barcode' => fake()->numerify('#############'),
+            'price' => fake()->numberBetween(100, 10000),
         ];
     }
 }
